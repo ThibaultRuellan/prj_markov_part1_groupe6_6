@@ -1,0 +1,51 @@
+{
+	"kind" : "toolchains",
+	"toolchains" : 
+	[
+		{
+			"compiler" : 
+			{
+				"id" : "GNU",
+				"implicit" : 
+				{
+					"includeDirectories" : 
+					[
+						"G:/Clions/CLion 2025.1/bin/mingw/lib/gcc/x86_64-w64-mingw32/13.1.0/include",
+						"G:/Clions/CLion 2025.1/bin/mingw/include",
+						"G:/Clions/CLion 2025.1/bin/mingw/lib/gcc/x86_64-w64-mingw32/13.1.0/include-fixed",
+						"G:/Clions/CLion 2025.1/bin/mingw/x86_64-w64-mingw32/include"
+					],
+					"linkDirectories" : [],
+					"linkFrameworkDirectories" : [],
+					"linkLibraries" : []
+				},
+				"path" : "G:/Clions/CLion 2025.1/bin/mingw/bin/gcc.exe",
+				"version" : "13.1.0"
+			},
+			"language" : "C",
+			"sourceFileExtensions" : 
+			[
+				"c",
+				"m"
+			]
+		},
+		{
+			"compiler" : 
+			{
+				"implicit" : {},
+				"path" : "G:/Clions/CLion 2025.1/bin/mingw/bin/windres.exe"
+			},
+			"language" : "RC",
+			"sourceFileExtensions" : 
+			[
+				"rc",
+				"RC"
+			]
+		}
+	],
+	"version" : 
+	{
+		"major" : 1,
+		"minor" : 0
+	}
+}

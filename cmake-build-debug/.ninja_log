@@ -1,0 +1,4 @@
+# ninja log v6
+1	229	7842071149615443	build.ninja	c3e8562d4c625403
+26	79	7842071150368527	CMakeFiles/ti301_markov_part1.dir/main.c.obj	bcc7a6a57da4a711
+80	195	7842071150913071	ti301_markov_part1.exe	1f6ea1b8797d9b3a
