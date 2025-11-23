@@ -1,214 +1,203 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include "graph.h"
+#include "tarjan.h"
+#include "hasse.h"
+#include "matrix.h"
+#include "utils.h"
 #include <string.h>
 
-/* ===== Structures ===== */
-typedef struct Cellule {
-    int dest;
-    float proba;
-    struct Cellule *suiv;
-} Cellule;
-
-typedef struct {
-    Cellule *tete;
-} Liste;
-
-typedef struct {
-    int n;
-    Liste *tab;
-} GrapheLA;
-
-/* ===== Fonctions listes ===== */
-static Cellule* creer_cellule(int dest, float proba) {
-    Cellule *c = (Cellule*)malloc(sizeof(Cellule));
-    if (c == NULL) { perror("malloc"); exit(EXIT_FAILURE); }
-    c->dest = dest;
-    c->proba = proba;
-    c->suiv = NULL;
-    return c;
+void printUsage() {
+    printf("\n=== Programme d'analyse de graphes de Markov ===\n\n");
+    printf("Usage: ./markov <fichier_graphe> [options]\n\n");
+    printf("Options:\n");
+    printf("  --partie1     : Afficher le graphe et le vérifier (PARTIE 1)\n");
+    printf("  --partie2     : Analyser les composantes connexes (PARTIE 2)\n");
+    printf("  --partie3     : Calculer les distributions stationnaires (PARTIE 3)\n");
+    printf("  --all         : Exécuter toutes les parties\n");
+    printf("  --help        : Afficher cette aide\n\n");
+    printf("Exemples:\n");
+    printf("  ./markov exemple1.txt --all\n");
+    printf("  ./markov exemple_meteo.txt --partie3\n\n");
 }
 
-static void initialiser_liste(Liste *l) { l->tete = NULL; }
-
-static void ajouter_fin(Liste *l, int dest, float proba) {
-    Cellule *c = creer_cellule(dest, proba);
-    if (l->tete == NULL) {
-        l->tete = c;
-    } else {
-        Cellule *p = l->tete;
-        while (p->suiv != NULL) p = p->suiv;
-        p->suiv = c;
-    }
-}
-
-static void afficher_liste(const Liste *l) {
-    const Cellule *p = l->tete;
-    printf("head -> ");
-    while (p != NULL) {
-        printf("(%d, %.2f) -> ", p->dest, p->proba);
-        p = p->suiv;
-    }
-    printf("NULL\n");
-}
-
-/* ===== Fonctions graphe (liste d'adjacence) ===== */
-static GrapheLA* creer_graphe(int n) {
-    GrapheLA *g = (GrapheLA*)malloc(sizeof(GrapheLA));
-    if (g == NULL) { perror("malloc"); exit(EXIT_FAILURE); }
-    g->n = n;
-    g->tab = (Liste*)malloc(n * sizeof(Liste));
-    if (g->tab == NULL) { perror("malloc"); exit(EXIT_FAILURE); }
-    for (int i = 0; i < n; ++i) initialiser_liste(&g->tab[i]);
-    return g;
-}
-
-static void ajouter_arete(GrapheLA *g, int depart, int arrivee, float proba) {
-    if (depart < 1 || depart > g->n || arrivee < 1 || arrivee > g->n) {
-        fprintf(stderr, "Arete hors bornes: %d -> %d\n", depart, arrivee);
-        return;
-    }
-    ajouter_fin(&g->tab[depart - 1], arrivee, proba);
-}
-
-static void afficher_graphe(const GrapheLA *g) {
-    for (int i = 0; i < g->n; ++i) {
-        printf("Liste du sommet %d: ", i + 1);
-        afficher_liste(&g->tab[i]);
-    }
-}
-
-static void liberer_graphe(GrapheLA *g) {
-    if (g == NULL) return;
-    for (int i = 0; i < g->n; ++i) {
-        Cellule *p = g->tab[i].tete;
-        while (p != NULL) {
-            Cellule *tmp = p->suiv;
-            free(p);
-            p = tmp;
-        }
-    }
-    free(g->tab);
-    free(g);
-}
-
-/* ===== Etape 2 : Vérifier le graphe de Markov ===== */
-static float somme_sortante(const GrapheLA *g, int v) {
-    float s = 0.0f;
-    const Cellule *p = g->tab[v - 1].tete;
-    while (p != NULL) { s += p->proba; p = p->suiv; }
-    return s;
-}
-
-static int verifier_graphe_markov(const GrapheLA *g, float bas, float haut) {
-    int ok = 1;
-    for (int v = 1; v <= g->n; ++v) {
-        float s = somme_sortante(g, v);
-        if (s < bas || s > haut) {
-            if (ok) printf("Le graphe n’est pas un graphe de Markov\n");
-            printf("la somme des probabilites du sommet %d est %.2f\n", v, s);
-            ok = 0;
-        }
-    }
-    if (ok) printf("Le graphe est un graphe de Markov\n");
-    return ok;
-}
-
-/* ===== Etape 3 : Générer le fichier Mermaid =====
-   getId(num) : 1->A, 2->B, ..., 26->Z, 27->AA, etc.
-*/
-static void toId(int num, char *out) {
-    char tmp[32];
-    int k = 0;
-    while (num > 0) {
-        num--;
-        tmp[k++] = (char)('A' + (num % 26));
-        num /= 26;
-    }
-    for (int i = 0; i < k; ++i) out[i] = tmp[k - 1 - i];
-    out[k] = '\0';
-}
-
-static char* getId(int num) {
-    static char buf[32];
-    toId(num, buf);
-    return buf;
-}
-
-static int ecrire_mermaid(const GrapheLA *g, const char *chemin) {
-    FILE *f = fopen(chemin, "wt");
-    if (f == NULL) { perror("open output"); return 0; }
-
-    fprintf(f, "---\n");
-    fprintf(f, "config:\n");
-    fprintf(f, "  layout: elk\n");
-    fprintf(f, "  theme: neo\n");
-    fprintf(f, "  look: neo\n");
-    fprintf(f, "---\n\n");
-    fprintf(f, "flowchart LR\n\n");
-
-    for (int i = 1; i <= g->n; ++i) {
-        char id[32];
-        toId(i, id);
-        fprintf(f, "%s((%d))\n", id, i);
-    }
-    fprintf(f, "\n");
-
-    for (int i = 1; i <= g->n; ++i) {
-        char from[32];
-        toId(i, from);
-        const Cellule *p = g->tab[i - 1].tete;
-        while (p != NULL) {
-            char to[32];
-            toId(p->dest, to);
-            fprintf(f, "%s -->|%.2f| %s\n", from, p->proba, to);
-            p = p->suiv;
-        }
-    }
-
-    fclose(f);
-    return 1;
-}
-
-/* ===== Lecture du fichier ===== */
-static GrapheLA* lire_graphe(const char *chemin) {
-    FILE *f = fopen(chemin, "rt");
-    if (f == NULL) { perror("open file"); exit(EXIT_FAILURE); }
-
-    int n;
-    if (fscanf(f, "%d", &n) != 1) {
-        fprintf(stderr, "Impossible de lire n\n");
-        fclose(f);
-        exit(EXIT_FAILURE);
-    }
-
-    GrapheLA *g = creer_graphe(n);
-
-    int d, a;
-    float p;
-    while (fscanf(f, "%d %d %f", &d, &a, &p) == 3) {
-        ajouter_arete(g, d, a, p);
-    }
-
-    fclose(f);
-    return g;
-}
-
-/* ===== Programme principal ===== */
 int main(int argc, char *argv[]) {
-    const char *fichier_in = (argc >= 2) ? argv[1] : "exemple1.txt";
-    GrapheLA *g = lire_graphe(fichier_in);
-
-    printf("Graphe charge (n = %d)\n", g->n);
-    afficher_graphe(g);
-
-    verifier_graphe_markov(g, 0.99f, 1.00f);
-
-    const char *fichier_out = "mermaid_output.txt";
-    if (ecrire_mermaid(g, fichier_out)) {
-        printf("Fichier Mermaid genere: %s\n", fichier_out);
-        printf("Copiez/collez son contenu dans l'editeur en ligne Mermaid.\n");
+    if (argc < 2) {
+        printf("Erreur: Fichier graphe manquant\n");
+        printUsage();
+        return EXIT_FAILURE;
     }
 
-    liberer_graphe(g);
-    return 0;
+    // Vérifier l'option --help
+    if (strcmp(argv[1], "--help") == 0) {
+        printUsage();
+        return EXIT_SUCCESS;
+    }
+
+    const char *filename = argv[1];
+
+    // Déterminer quelles parties exécuter
+    int run_partie1 = 0;
+    int run_partie2 = 0;
+    int run_partie3 = 0;
+
+    if (argc == 2) {
+        // Par défaut, exécuter toutes les parties
+        run_partie1 = run_partie2 = run_partie3 = 1;
+    } else {
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--partie1") == 0) {
+                run_partie1 = 1;
+            } else if (strcmp(argv[i], "--partie2") == 0) {
+                run_partie2 = 1;
+            } else if (strcmp(argv[i], "--partie3") == 0) {
+                run_partie3 = 1;
+            } else if (strcmp(argv[i], "--all") == 0) {
+                run_partie1 = run_partie2 = run_partie3 = 1;
+            }
+        }
+    }
+
+    printf("\n========================================\n");
+    printf("   ANALYSE DE GRAPHE DE MARKOV\n");
+    printf("========================================\n");
+    printf("Fichier: %s\n", filename);
+    printf("========================================\n\n");
+
+    // ========== PARTIE 1 : Créer et vérifier le graphe ==========
+
+    printf("Chargement du graphe...\n");
+    t_adjacency_list adj_list = readGraph(filename);
+    printf("Graphe chargé: %d sommets\n", adj_list.nb_vertices);
+
+    if (run_partie1) {
+        printf("\n========== PARTIE 1 ==========\n");
+
+        // Afficher la liste d'adjacence
+        displayAdjacencyList(adj_list);
+
+        // Vérifier si c'est un graphe de Markov
+        int is_valid = isMarkovGraph(adj_list);
+
+        if (!is_valid) {
+            printf("\nAttention: Le graphe n'est pas valide!\n");
+        }
+
+        // Générer le fichier Mermaid
+        char mermaid_file[256];
+        snprintf(mermaid_file, sizeof(mermaid_file), "%s_graph.mmd", filename);
+        generateMermaidFile(adj_list, mermaid_file);
+
+        printf("\n========== FIN PARTIE 1 ==========\n\n");
+    }
+
+    // ========== PARTIE 2 : Algorithme de Tarjan et Hasse ==========
+
+    t_partition partition;
+    t_link_array links;
+
+    if (run_partie2 || run_partie3) {
+        printf("\n========== PARTIE 2 ==========\n");
+
+        // Appliquer l'algorithme de Tarjan
+        printf("Application de l'algorithme de Tarjan...\n");
+        partition = tarjan(adj_list);
+
+        // Afficher la partition
+        displayPartition(partition);
+
+        // Trouver les liens entre classes
+        printf("Recherche des liens entre classes...\n");
+        links = findClassLinks(adj_list, partition);
+        displayLinks(links);
+
+        // Générer le diagramme de Hasse
+        char hasse_file[256];
+        snprintf(hasse_file, sizeof(hasse_file), "%s_hasse.mmd", filename);
+        generateHasseDiagram(partition, links, hasse_file);
+
+        // Analyser les caractéristiques
+        analyzeGraphCharacteristics(adj_list, partition, links);
+
+        printf("\n========== FIN PARTIE 2 ==========\n\n");
+    }
+
+    // ========== PARTIE 3 : Calculs matriciels et distributions ==========
+
+    if (run_partie3) {
+        printf("\n========== PARTIE 3 ==========\n");
+
+        // Créer la matrice de transition
+        t_matrix M = adjacencyListToMatrix(adj_list);
+        printf("Matrice de transition créée\n");
+        displayMatrix(M);
+
+        // Calculer M^3
+        printf("Calcul de M^3:\n");
+        t_matrix M3 = matrixPower(M, 3);
+        displayMatrix(M3);
+        freeMatrix(&M3);
+
+        // Calculer M^7
+        printf("Calcul de M^7:\n");
+        t_matrix M7 = matrixPower(M, 7);
+        displayMatrix(M7);
+        freeMatrix(&M7);
+
+        // Trouver la convergence
+        printf("Recherche de la convergence (epsilon = 0.01)...\n");
+        t_matrix Mn_prev = createEmptyMatrix(M.rows);
+        copyMatrix(Mn_prev, M);
+
+        int n = 1;
+        float diff;
+        do {
+            n++;
+            t_matrix Mn = matrixPower(M, n);
+            diff = matrixDifference(Mn, Mn_prev);
+
+            if (diff < 0.01f) {
+                printf("Convergence atteinte à M^%d (différence = %.6f)\n", n, diff);
+                displayMatrix(Mn);
+            }
+
+            copyMatrix(Mn_prev, Mn);
+            freeMatrix(&Mn);
+
+            if (n > 100) {
+                printf("Pas de convergence après 100 itérations\n");
+                break;
+            }
+        } while (diff >= 0.01f);
+
+        freeMatrix(&Mn_prev);
+
+        // Calculer les distributions stationnaires par classe
+        computeStationaryDistribution(adj_list, partition, 0.01f);
+
+        // BONUS: Calculer les périodes
+        printf("\n=== BONUS: Calcul des périodes ===\n");
+        for (int i = 0; i < partition.nb_classes; i++) {
+            t_matrix sub = subMatrix(M, partition, i);
+            int period = getPeriod(sub);
+            printf("Classe C%d: période = %d\n", i + 1, period);
+            freeMatrix(&sub);
+        }
+        printf("===================================\n\n");
+
+        freeMatrix(&M);
+
+        printf("\n========== FIN PARTIE 3 ==========\n\n");
+    }
+
+    // Libérer la mémoire
+    if (run_partie2 || run_partie3) {
+        freeLinkArray(&links);
+        freePartition(&partition);
+    }
+    freeAdjacencyList(&adj_list);
+
+    printf("\n========================================\n");
+    printf("   ANALYSE TERMINÉE\n");
+    printf("========================================\n\n");
+
+    return EXIT_SUCCESS;
 }
